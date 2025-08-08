@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Switzerland Grand Tour — Interactive Map with Stay Highlights</title>
+
+  <!-- Tailwind -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet" />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+
+  <style>
+    body { font-family:Inter,system-ui; background:#f7fafc; }
+    #map { height:62vh; border-radius:1rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); }
+    .day-selector { display:flex; overflow-x:auto; gap:8px; padding:8px; background:#fff; margin-bottom:8px; border-radius:0.5rem; }
+    .day-selector button { flex:none; padding:6px 10px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer; }
+    .day-selector button.active { background:#2563eb; color:#fff; }
+    .popup-content { font-size:0.9rem; max-width:360px; }
+    .day-tabs { display:flex; gap:4px; margin-bottom:6px; }
+    .day-tabs button { padding:4px 8px; background:#edf2f7; border:none; border-radius:4px; cursor:pointer; font-size:0.85rem; }
+    .day-tabs button.active { background:#2563eb; color:#fff; }
+    .popup-carousel { position:relative; overflow:hidden; height:120px; margin-bottom:6px; border-radius:6px; }
+    .popup-carousel img { width:100%; height:120px; object-fit:cover; position:absolute; top:0; left:100%; opacity:0; transition:all .5s ease-in-out; }
+    .popup-carousel img.active { left:0; opacity:1; }
+    .carousel-nav { position:absolute; top:50%; width:100%; display:flex; justify-content:space-between; transform:translateY(-50%); pointer-events:none; }
+    .carousel-nav button { pointer-events:all; background:rgba(0,0,0,0.4); color:#fff; border:none; padding:5px; border-radius:4px; }
+
+    /* Full route toggle button */
+    #full-route-btn {
+      display: block;
+      margin: 0 auto 1rem auto;
+      padding: 0.5rem 1.5rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.2s ease;
+    }
+    #full-route-btn:hover {
+      background-color: #1e40af;
+    }
+  </style>
+</head>
+<body class="p-6">
+
+  <h1 class="text-3xl font-bold text-center mb-3">Switzerland Grand Tour</h1>
+
+  <div class="day-selector mb-2" id="day-selector">
+    <!-- Buttons for each day will populate here -->
+  </div>
+
+  <div id="map" class="mb-4"></div>
+
+  <button id="full-route-btn" title="Show Full Route">Show Full Route</button>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Map setup
+    const map = L.map('map').setView([46.8182, 8.2275], 8);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Place coordinates
+    const C = {
+      Zurich: [47.3769,8.5417],
+      Grindelwald: [46.6264,8.0416],
+      Montreux: [46.4319,6.9118],
+      Zermatt: [46.0207,7.7491],
+      StMoritz: [46.4988,9.8373]
+    };
+
+    // Itinerary: overnight stays only, with days array
+    const stays = [
+      {
+        place: 'Zurich',
+        coords: C.Zurich,
+        days: [
+          { day:1, title: 'Arrival & City Stroll', teaser:'Touch down and settle into Zurich’s Old Town.', description:'Morning: Arrive Zurich Airport, take train to your hotel. Evening: Stroll the historic Altstadt.' , photos:['https://images.unsplash.com/photo-1528909514045-2fa4ac7a08ba?w=800']},
+          { day:2, title: 'Chocolate & Waterfalls', teaser:'Sweet sensations and cascading waters.', description:'Morning: Lindt Home of Chocolate in Kilchberg. Afternoon: Explore Rhine Falls.' , photos:['https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800'] }
+        ]
+      },
+      {
+        place: 'Grindelwald',
+        coords: C.Grindelwald,
+        days: [
+          { day:3, title: 'Lucerne to the Alps', teaser:'Chapel Bridge to mountain rails.', description:'Train via Lucerne; explore Chapel Bridge before boarding the scenic express to Grindelwald.' , photos:['https://upload.wikimedia.org/wikipedia/commons/2/28/Kapellbr%C3%BCcke_Lucerne.jpg']},
+          { day:4, title: 'Jungfraujoch — Top of Europe', teaser:'Bring a jacket—this is high altitude!', description:'Eiger Express to Jungfraujoch, visit the Ice Palace, take in glacier views.' , photos:['https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800']},
+          { day:5, title: 'Cliff Walk & Alpine Lakes', teaser:'Ride high, hike calm.', description:'Gondola to First; enjoy the Cliff Walk and hike to Bachalpsee.' , photos:['https://images.unsplash.com/photo-1491553895911-0055eca6402d?w=800']}
+        ]
+      },
+      {
+        place: 'Montreux',
+        coords: C.Montreux,
+        days:[ { day:7, title: 'Lake Geneva & Castle', teaser:'Château charm by the water’s edge.', description:'Arrive and explore lakeside Montreux; afternoon visit to Chillon Castle.' , photos:['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800']} ]
+      },
+      {
+        place: 'Zermatt',
+        coords: C.Zermatt,
+        days: [
+          { day:8, title: 'Car-Free Alpine Arrival', teaser:'Quiet cobbled lanes and mountain air.', description:'Train into Zermatt; explore village and Gorner Gorge.' , photos:['https://images.unsplash.com/photo-1508962914676-55f0a4b3d5a7?w=800']},
+          { day:9, title: 'Matterhorn Morning', teaser:'Ride high for iconic peaks.', description:'Gornergrat Bahn for panoramic views of the Matterhorn; hike to Riffelsee.' , photos:['https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800']},
+          { day:10, title: 'Glacier Paradise Adventure', teaser:'Snow-capped serenity—touch the sky.', description:'Cable car to Klein Matterhorn (Glacier Paradise); optional Five Lakes Hike.' , photos:['https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800']},
+          { day:11, title: 'Leisure Day in Zermatt', teaser:'Shop, sip, stroll.', description:'Day at leisure—relax, visit museums or take a gentle walk.' , photos:['https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800']}
+        ]
+      },
+      {
+        place: 'St. Moritz',
+        coords: C.StMoritz,
+        days: [
+          { day:12, title: 'Glacier Express Ride', teaser:'A train ride through snowy fairytales.', description:'Board the Glacier Express and take in the dramatic alpine vistas on your way to St. Moritz.' , photos:['https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800']},
+          { day:13, title: 'Bernina Express Excursion', teaser:'All aboard for a sweep above the clouds.', description:'Round-trip via Bernina Express—cross dramatic viaducts and glaciers to Tirano.' , photos:['https://images.unsplash.com/photo-1499346030926-9a72daac6c63?w=800']}
+        ]
+      }
+    ];
+
+    // Create markers and add permanent tooltips (place names)
+    stays.forEach(placeObj => {
+      const marker = L.marker(placeObj.coords).addTo(map);
+      marker.bindTooltip(placeObj.place, { permanent: true, direction: 'top', className: 'place-label' });
+      marker.on('click', () => {
+        showDayView(placeObj.place, placeObj.days[0].day);
+        highlightDaySelector(placeObj.place, placeObj.days[0].day);
+      });
+      placeObj.marker = marker;
+      placeObj.currentPopupDay = placeObj.days[0].day; // Track current popup day
+    });
+
+    // Full route polyline connecting unique places in order of first day
+    const allDays = stays.flatMap(p => p.days.map(d => ({ ...d, place: p.place, coords: p.coords })));
+    allDays.sort((a,b) => a.day - b.day);
+
+    const uniquePlaceCoords = [];
+    const seenPlaces = new Set();
+    allDays.forEach(d => {
+      if (!seenPlaces.has(d.place)) {
+        uniquePlaceCoords.push(d.coords);
+        seenPlaces.add(d.place);
+      }
+    });
+
+    // Polyline for full route
+    const fullRouteLine = L.polyline(uniquePlaceCoords, {
+      color: '#2563eb',
+      weight: 4,
+      opacity: 0.8,
+      dashArray: '8,6',
+    });
+
+    // Polyline for the last leg (St. Moritz to Zurich)
+    const lastLegLine = L.polyline([C.StMoritz, C.Zurich], {
+      color: '#2563eb',
+      weight: 4,
+      opacity: 0.8,
+      dashArray: '8,6',
+      dashOffset: '16', // offset to visually separate dashes if needed
+    });
+
+    // Calculate bounds to include all route points plus last leg
+    const fullRouteBounds = L.latLngBounds(uniquePlaceCoords.concat([C.StMoritz, C.Zurich]));
+
+    // Day selector buttons
+    const daySelector = document.getElementById('day-selector');
+    stays.forEach(placeObj => {
+      placeObj.days.forEach(d => {
+        const btn = document.createElement('button');
+        btn.textContent = `Day ${d.day} – ${placeObj.place}`;
+        btn.dataset.place = placeObj.place;
+        btn.dataset.day = d.day;
+        daySelector.appendChild(btn);
+
+        btn.addEventListener('click', () => {
+          showDayView(placeObj.place, d.day);
+          highlightDaySelector(placeObj.place, d.day);
+        });
+      });
+    });
+
+    // Highlight day selector buttons
+    function highlightDaySelector(place, day) {
+      document.querySelectorAll('.day-selector button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.place === place && Number(btn.dataset.day) === day);
+      });
+    }
+
+    // Show full route view: add polylines & all markers, close popup
+    function showFullRouteView() {
+      if (!map.hasLayer(fullRouteLine)) fullRouteLine.addTo(map);
+      if (!map.hasLayer(lastLegLine)) lastLegLine.addTo(map);
+      stays.forEach(p => {
+        if (!map.hasLayer(p.marker)) p.marker.addTo(map);
+      });
+      map.closePopup();
+      document.querySelectorAll('.day-selector button').forEach(btn => btn.classList.remove('active'));
+      map.fitBounds(fullRouteBounds, { padding: [50, 50] });
+    }
+
+    // Show specific day view: remove polylines, show only relevant marker, open popup
+    function showDayView(place, day) {
+      if (map.hasLayer(fullRouteLine)) map.removeLayer(fullRouteLine);
+      if (map.hasLayer(lastLegLine)) map.removeLayer(lastLegLine);
+
+      stays.forEach(p => {
+        if (p.place === place) {
+          if (!map.hasLayer(p.marker)) {
+            p.marker.addTo(map);
+          }
+        } else {
+          if (map.hasLayer(p.marker)) {
+            map.removeLayer(p.marker);
+          }
+        }
+      });
+
+      // Wait a tiny bit to ensure marker is on the map, then open popup
+      setTimeout(() => {
+        openDayPopup(place, day);
+      }, 10);
+
+      const placeObj = stays.find(p => p.place === place);
+      if (placeObj) {
+        map.flyTo(placeObj.coords, 11, { duration: 0.6 });
+      }
+
+      highlightDaySelector(place, day);
+    }
+
+    // Open popup with day itinerary for place and selected day
+    function openDayPopup(place, selectedDay) {
+      const placeObj = stays.find(p => p.place === place);
+      if (!placeObj) return;
+
+      const selDay = placeObj.days.find(d => d.day === selectedDay);
+      if (!selDay) return;
+
+      let html = '<div class="popup-content">';
+      html += '<div class="day-tabs">';
+      placeObj.days.forEach(d => {
+        html += `<button class="${d.day === selectedDay ? 'active' : ''}" data-day="${d.day}">${d.day}</button>`;
+      });
+      html += '</div>';
+
+      html += '<div class="popup-carousel">';
+      selDay.photos.forEach((src, idx) => {
+        html += `<img src="${src}" class="${idx === 0 ? 'active' : ''}" alt="${selDay.title} photo">`;
+      });
+      html += '<div class="carousel-nav"><button class="prev">&lt;</button><button class="next">&gt;</button></div>';
+      html += '</div>';
+
+      html += `<h3 class="font-semibold">${selDay.title}</h3>`;
+      html += `<p class="italic text-sm">${selDay.teaser}</p>`;
+      html += `<p class="mt-2">${selDay.description}</p>`;
+      html += '</div>';
+
+      if (!placeObj.marker.getPopup()) {
+        placeObj.marker.bindPopup(html, { maxWidth: 380, keepInView: true });
+      } else {
+        placeObj.marker.setPopupContent(html);
+      }
+
+      placeObj.marker.openPopup();
+      placeObj.currentPopupDay = selectedDay;
+
+      setTimeout(() => {
+        const popupEl = document.querySelector('.leaflet-popup-content');
+        if (!popupEl) return;
+
+        popupEl.querySelectorAll('.day-tabs button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const dayNum = Number(btn.dataset.day);
+            showDayView(place, dayNum);
+          });
+        });
+
+        const carousel = popupEl.querySelector('.popup-carousel');
+        const imgs = Array.from(carousel.querySelectorAll('img'));
+        const prevBtn = carousel.querySelector('.prev');
+        const nextBtn = carousel.querySelector('.next');
+        let idx = 0, cycles = 0, autoInterval;
+
+        function show(i) {
+          imgs.forEach((im, j) => im.classList.toggle('active', j === i));
+          idx = i;
+        }
+        prevBtn.onclick = e => { e.stopPropagation(); show((idx - 1 + imgs.length) % imgs.length); resetAuto(); };
+        nextBtn.onclick = e => { e.stopPropagation(); show((idx + 1) % imgs.length); resetAuto(); };
+
+        function startAuto(){
+          autoInterval = setInterval(() => {
+            if (!popupEl.contains(carousel)) { clearInterval(autoInterval); return; }
+            show((idx + 1) % imgs.length);
+            cycles++;
+            if (cycles >= 5 * imgs.length) clearInterval(autoInterval);
+          }, 3000);
+        }
+        function resetAuto(){
+          cycles = 0;
+          if(autoInterval) clearInterval(autoInterval);
+          startAuto();
+        }
+        startAuto();
+      }, 200);
+    }
+
+    document.getElementById('full-route-btn').addEventListener('click', () => {
+      showFullRouteView();
+    });
+
+    // Show full route on load
+    showFullRouteView();
+
+  });
+  </script>
+</body>
+</html>
