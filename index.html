@@ -437,14 +437,6 @@
                 map.fitBounds(fullRouteBounds, {
                     padding: [100, 100]
                 });
-
-                // --- NEW CODE START ---
-                // For mobile, zoom in one level after fitting the bounds to give a closer look.
-                const isMobile = window.innerWidth < 768;
-                if (isMobile) {
-                    map.setZoom(map.getZoom() + 1);
-                }
-                // --- NEW CODE END ---
             }
 
             // Show specific day view: remove polylines, show only relevant marker, open popup/bottom sheet
@@ -572,7 +564,9 @@
                         if (isMobile) {
                             openBottomSheet(place, dayNum);
                         } else {
-                            openDayPopup(place, dayNum);
+                            setTimeout(() => {
+                                openDayPopup(place, dayNum);
+                            }, 10);
                         }
                         highlightDaySelector(place, dayNum);
                     });
