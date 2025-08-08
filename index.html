@@ -509,7 +509,8 @@
             const bottomSheetContainer = document.getElementById('bottom-sheet');
             const bottomSheet = bottomSheetContainer.querySelector('.bottom-sheet');
             const bottomSheetContent = document.getElementById('bottom-sheet-content');
-            
+            const dragHandle = bottomSheet.querySelector('.drag-handle');
+
             let isDragging = false;
             let startY = 0;
             let currentTransformY = 0;
@@ -539,19 +540,23 @@
 
             // Event handler for drag start
             function onDragStart(e) {
-                if (window.innerWidth >= 768) return; // Only for mobile
+                // Only enable dragging for touch devices
+                if (window.innerWidth >= 768) return;
+
                 isDragging = true;
                 bottomSheet.style.transition = 'none'; // Disable transition for smooth dragging
                 startY = (e.touches ? e.touches[0].clientY : e.clientY);
                 
                 // Get the current transform Y value
-                const transformValue = window.getComputedStyle(bottomSheet).transform;
-                if (transformValue && transformValue !== 'none') {
-                    const matrix = new WebKitCSSMatrix(transformValue);
-                    currentTransformY = matrix.m42;
-                } else {
-                    currentTransformY = 0;
-                }
+                const style = window.getComputedStyle(bottomSheet);
+                const matrix = new DOMMatrix(style.transform);
+                currentTransformY = matrix.m42;
+
+                // Add event listeners for dragging to the whole window
+                window.addEventListener('mousemove', onDragMove);
+                window.addEventListener('touchmove', onDragMove, { passive: false });
+                window.addEventListener('mouseup', onDragEnd);
+                window.addEventListener('touchend', onDragEnd);
 
                 e.preventDefault(); // Prevents page scrolling
             }
@@ -567,7 +572,6 @@
 
                 // Clamp the movement to prevent it from going above the top
                 // and allow it to be dragged down to close.
-                // It should not go below 0 (fully open) but can go past its height (to close).
                 newY = Math.max(0, newY);
                 bottomSheet.style.transform = `translateY(${newY}px)`;
             }
@@ -579,7 +583,15 @@
                 bottomSheet.style.transition = 'transform 0.3s ease-out'; // Re-enable transition
 
                 // Get the final position of the sheet after the drag
-                const finalTransformY = new WebKitCSSMatrix(window.getComputedStyle(bottomSheet).transform).m42;
+                const style = window.getComputedStyle(bottomSheet);
+                const matrix = new DOMMatrix(style.transform);
+                const finalTransformY = matrix.m42;
+                
+                // Remove the drag event listeners
+                window.removeEventListener('mousemove', onDragMove);
+                window.removeEventListener('touchmove', onDragMove);
+                window.removeEventListener('mouseup', onDragEnd);
+                window.removeEventListener('touchend', onDragEnd);
                 
                 // If the user dragged down past the threshold, close the sheet
                 if (finalTransformY > dragThreshold) {
@@ -590,14 +602,9 @@
                 }
             }
             
-            // Add event listeners for dragging
-            const dragHandle = bottomSheet.querySelector('.drag-handle');
+            // Add event listeners for dragging start only on the drag handle
             dragHandle.addEventListener('mousedown', onDragStart);
             dragHandle.addEventListener('touchstart', onDragStart, { passive: false });
-            window.addEventListener('mousemove', onDragMove);
-            window.addEventListener('touchmove', onDragMove, { passive: false });
-            window.addEventListener('mouseup', onDragEnd);
-            window.addEventListener('touchend', onDragEnd);
 
             // Add event listener for the close button, which now only hides the sheet
             document.getElementById('bottom-sheet-close-btn').addEventListener('click', () => {
