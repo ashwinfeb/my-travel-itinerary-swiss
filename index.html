@@ -428,12 +428,15 @@
                 stays.forEach(p => {
                     if (!map.hasLayer(p.marker)) p.marker.addTo(map);
                 });
-                // Hide the bottom sheet if it's open
+                
+                // Close any open popups or bottom sheets without triggering a new view
                 hideBottomSheet();
                 map.closePopup();
                 document.querySelectorAll('.day-selector button').forEach(btn => btn.classList.remove('active'));
+
+                // Fit the map to the full route bounds
                 map.fitBounds(fullRouteBounds, {
-                    padding: [50, 50]
+                    padding: [100, 100]
                 });
             }
 
@@ -441,9 +444,9 @@
             function showDayView(place, day) {
                 const isMobile = window.innerWidth < 768;
 
+                // Remove all route lines and hide all markers except the selected one
                 if (map.hasLayer(fullRouteLine)) map.removeLayer(fullRouteLine);
                 if (map.hasLayer(lastLegLine)) map.removeLayer(lastLegLine);
-
                 stays.forEach(p => {
                     if (p.place === place) {
                         if (!map.hasLayer(p.marker)) p.marker.addTo(map);
@@ -505,11 +508,11 @@
             const bottomSheetContainer = document.getElementById('bottom-sheet');
             const bottomSheet = bottomSheetContainer.querySelector('.bottom-sheet');
             const bottomSheetContent = document.getElementById('bottom-sheet-content');
-
             let isDragging = false;
             let startY = 0;
-            let initialY = 0;
             let currentY = 0;
+            let initialTranslateY = 0;
+            let halfwayPoint = window.innerHeight * 0.4; // A "halfway" point for the sheet
 
             // Open the bottom sheet
             function openBottomSheet(place, day) {
@@ -518,16 +521,21 @@
                 const popupHtml = getPopupHtml(placeObj, day);
                 bottomSheetContent.innerHTML = popupHtml;
                 bottomSheetContainer.classList.add('visible');
+                bottomSheet.style.transform = `translateY(0)`; // Ensure it starts from the bottom
+                initialTranslateY = 0;
 
                 // Bind events to the dynamically loaded content
                 bindDayEvents(bottomSheetContent, place);
             }
 
-            // Close the bottom sheet
+            // Close the bottom sheet and return to full route view
             function hideBottomSheet() {
                 // Reset the transform style before hiding it
-                bottomSheet.style.transform = 'translateY(0)';
+                bottomSheet.style.transform = `translateY(100%)`;
                 bottomSheetContainer.classList.remove('visible');
+                
+                // Do not call showFullRouteView here to avoid recursion.
+                // The user must click the "Show Full Route" button to get back.
             }
 
             // Event handler for drag start
@@ -536,7 +544,10 @@
                 isDragging = true;
                 bottomSheet.style.transition = 'none'; // Disable transition for smooth dragging
                 startY = (e.touches ? e.touches[0].clientY : e.clientY);
-                initialY = bottomSheet.getBoundingClientRect().top;
+
+                // Get the current transform Y value
+                const transformMatrix = new WebKitCSSMatrix(window.getComputedStyle(bottomSheet).transform);
+                initialTranslateY = transformMatrix.m42;
                 e.preventDefault(); // Prevents page scrolling
             }
 
@@ -546,8 +557,14 @@
                 const y = (e.touches ? e.touches[0].clientY : e.clientY);
                 const deltaY = y - startY;
 
-                // Calculate the new transform value, allowing upward and downward movement
-                const newY = Math.min(0, deltaY); // Prevents dragging past the top
+                let newY = initialTranslateY + deltaY;
+                const maxUp = halfwayPoint; // Maximum upward drag
+                const maxDown = 0; // Maximum downward drag (starting point)
+
+                // Clamp the newY value to be between the halfway point and the bottom
+                newY = Math.max(-maxUp, newY);
+                newY = Math.min(maxDown, newY);
+
                 bottomSheet.style.transform = `translateY(${newY}px)`;
                 currentY = y;
             }
@@ -559,16 +576,26 @@
                 bottomSheet.style.transition = 'transform 0.3s ease-out'; // Re-enable transition
 
                 const sheetRect = bottomSheet.getBoundingClientRect();
-                const sheetHeight = sheetRect.height;
-                const draggedDistance = currentY - startY;
-                const dragThreshold = sheetHeight * 0.2; // 20% of the sheet height
+                const draggedDistance = startY - currentY;
+                const halfwayDistance = halfwayPoint / 2;
 
-                // If dragged down past the threshold, close it
-                if (draggedDistance > dragThreshold) {
+                // If dragged down enough to close, or dragged down from the halfway point
+                if (currentY - startY > halfwayDistance) {
                     hideBottomSheet();
+                } else if (startY - currentY > halfwayDistance) {
+                    // If dragged up enough, snap to halfway
+                    bottomSheet.style.transform = `translateY(-${halfwayPoint}px)`;
                 } else {
-                    // Otherwise, snap it back to the top
-                    bottomSheet.style.transform = 'translateY(0)';
+                    // Otherwise, snap back to the last known position (full or halfway)
+                    const transformMatrix = new WebKitCSSMatrix(window.getComputedStyle(bottomSheet).transform);
+                    const currentTransformY = transformMatrix.m42;
+
+                    // Snap to whichever position is closer
+                    if (Math.abs(currentTransformY) < halfwayPoint / 2) {
+                        bottomSheet.style.transform = 'translateY(0)';
+                    } else {
+                        bottomSheet.style.transform = `translateY(-${halfwayPoint}px)`;
+                    }
                 }
             }
 
@@ -581,7 +608,7 @@
             window.addEventListener('mouseup', onDragEnd);
             window.addEventListener('touchend', onDragEnd);
 
-            // Add event listener for the close button
+            // Add event listener for the close button, which now only hides the sheet
             document.getElementById('bottom-sheet-close-btn').addEventListener('click', () => {
                 hideBottomSheet();
             });
