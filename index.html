@@ -91,6 +91,9 @@
             pointer-events: none; /* Allows clicks to pass through when hidden */
             transition: transform 0.3s ease-out;
             transform: translateY(100%);
+            /* Using a hardcoded max-width to not span the entire desktop screen */
+            max-width: 500px;
+            margin: 0 auto;
         }
         .bottom-sheet-container.visible {
             pointer-events: auto; /* Re-enable clicks when visible */
@@ -100,7 +103,7 @@
             background: #fff;
             box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.1);
             border-radius: 1rem 1rem 0 0;
-            padding: 1.5rem 1rem 1rem 1rem;
+            padding: 1rem;
             display: flex;
             flex-direction: column;
             gap: 0.75rem;
@@ -108,6 +111,7 @@
             overflow-y: auto; /* Scrollable content inside */
             overscroll-behavior: contain;
             transition: transform 0.3s ease-out;
+            position: relative; /* For positioning the close button */
         }
         .drag-handle {
             width: 3rem;
@@ -117,6 +121,20 @@
             margin: 0 auto 0.5rem;
             cursor: grab;
             touch-action: none;
+        }
+        .close-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #9ca3af;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .close-btn:hover {
+            color: #4b5563;
         }
         .popup-content {
             font-size: 0.9rem;
@@ -205,6 +223,7 @@
     <div id="bottom-sheet" class="bottom-sheet-container">
         <div class="bottom-sheet">
             <div class="drag-handle"></div>
+            <button class="close-btn" id="bottom-sheet-close-btn">&times;</button>
             <!-- Content will be injected here -->
             <div id="bottom-sheet-content"></div>
         </div>
@@ -215,8 +234,6 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Check for screen width to determine behavior
-            const isMobile = window.innerWidth < 768;
 
             // Map setup
             const map = L.map('map').setView([46.8182, 8.2275], 8);
@@ -411,11 +428,9 @@
                 stays.forEach(p => {
                     if (!map.hasLayer(p.marker)) p.marker.addTo(map);
                 });
-                if (isMobile) {
-                    hideBottomSheet();
-                } else {
-                    map.closePopup();
-                }
+                // Hide the bottom sheet if it's open
+                hideBottomSheet();
+                map.closePopup();
                 document.querySelectorAll('.day-selector button').forEach(btn => btn.classList.remove('active'));
                 map.fitBounds(fullRouteBounds, {
                     padding: [50, 50]
@@ -424,6 +439,8 @@
 
             // Show specific day view: remove polylines, show only relevant marker, open popup/bottom sheet
             function showDayView(place, day) {
+                const isMobile = window.innerWidth < 768;
+
                 if (map.hasLayer(fullRouteLine)) map.removeLayer(fullRouteLine);
                 if (map.hasLayer(lastLegLine)) map.removeLayer(lastLegLine);
 
@@ -479,7 +496,7 @@
                 setTimeout(() => {
                     const popupEl = document.querySelector('.leaflet-popup-content');
                     if (popupEl) {
-                        bindDayEvents(popupEl, place, selectedDay);
+                        bindDayEvents(popupEl, place);
                     }
                 }, 200);
             }
@@ -491,6 +508,7 @@
 
             let isDragging = false;
             let startY = 0;
+            let initialY = 0;
             let currentY = 0;
 
             // Open the bottom sheet
@@ -502,20 +520,24 @@
                 bottomSheetContainer.classList.add('visible');
 
                 // Bind events to the dynamically loaded content
-                bindDayEvents(bottomSheetContent, place, day);
+                bindDayEvents(bottomSheetContent, place);
             }
 
             // Close the bottom sheet
             function hideBottomSheet() {
+                // Reset the transform style before hiding it
+                bottomSheet.style.transform = 'translateY(0)';
                 bottomSheetContainer.classList.remove('visible');
             }
 
             // Event handler for drag start
             function onDragStart(e) {
+                if (window.innerWidth >= 768) return; // Only for mobile
                 isDragging = true;
                 bottomSheet.style.transition = 'none'; // Disable transition for smooth dragging
                 startY = (e.touches ? e.touches[0].clientY : e.clientY);
-                currentY = startY;
+                initialY = bottomSheet.getBoundingClientRect().top;
+                e.preventDefault(); // Prevents page scrolling
             }
 
             // Event handler for drag move
@@ -523,26 +545,26 @@
                 if (!isDragging) return;
                 const y = (e.touches ? e.touches[0].clientY : e.clientY);
                 const deltaY = y - startY;
-                const sheetHeight = bottomSheet.offsetHeight;
 
-                // Calculate a new transform value, preventing it from going above the top
-                const newY = Math.max(0, deltaY); // Don't let it drag above 0
+                // Calculate the new transform value, allowing upward and downward movement
+                const newY = Math.min(0, deltaY); // Prevents dragging past the top
                 bottomSheet.style.transform = `translateY(${newY}px)`;
                 currentY = y;
             }
 
             // Event handler for drag end
             function onDragEnd() {
+                if (!isDragging) return;
                 isDragging = false;
                 bottomSheet.style.transition = 'transform 0.3s ease-out'; // Re-enable transition
 
                 const sheetRect = bottomSheet.getBoundingClientRect();
                 const sheetHeight = sheetRect.height;
                 const draggedDistance = currentY - startY;
+                const dragThreshold = sheetHeight * 0.2; // 20% of the sheet height
 
-                // If dragged down by more than 20% of its height, close it
-                if (draggedDistance > sheetHeight * 0.2) {
-                    bottomSheet.style.transform = `translateY(${sheetHeight}px)`;
+                // If dragged down past the threshold, close it
+                if (draggedDistance > dragThreshold) {
                     hideBottomSheet();
                 } else {
                     // Otherwise, snap it back to the top
@@ -551,12 +573,18 @@
             }
 
             // Add event listeners for dragging
-            bottomSheet.querySelector('.drag-handle').addEventListener('mousedown', onDragStart);
-            bottomSheet.querySelector('.drag-handle').addEventListener('touchstart', onDragStart);
+            const dragHandle = bottomSheet.querySelector('.drag-handle');
+            dragHandle.addEventListener('mousedown', onDragStart);
+            dragHandle.addEventListener('touchstart', onDragStart);
             window.addEventListener('mousemove', onDragMove);
             window.addEventListener('touchmove', onDragMove);
             window.addEventListener('mouseup', onDragEnd);
             window.addEventListener('touchend', onDragEnd);
+
+            // Add event listener for the close button
+            document.getElementById('bottom-sheet-close-btn').addEventListener('click', () => {
+                hideBottomSheet();
+            });
 
             // --- END OF BOTTOM SHEET LOGIC ---
 
@@ -585,10 +613,11 @@
             }
 
             // Common function to bind events for both popup and bottom sheet
-            function bindDayEvents(container, place, selectedDay) {
+            function bindDayEvents(container, place) {
                 container.querySelectorAll('.day-tabs button').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const dayNum = Number(btn.dataset.day);
+                        const isMobile = window.innerWidth < 768;
                         if (isMobile) {
                             openBottomSheet(place, dayNum);
                         } else {
